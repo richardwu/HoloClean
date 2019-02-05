@@ -94,7 +94,7 @@ class DomainEngine:
         self.single_stats = single_stats
         logging.debug("preparing pruned co-occurring statistics...")
         tic = time.clock()
-        self.pruned_pair_stats = self._pruned_pair_stats(pair_stats)
+        self.pruned_pair_stats, self._temp_stats = self._pruned_pair_stats(pair_stats)
         logging.debug("DONE with pruned co-occurring statistics in %.2f secs", time.clock() - tic)
         self.setup_complete = True
 
@@ -112,16 +112,22 @@ class DomainEngine:
         """
 
         out = {}
+        tempout = {}
         for attr1 in tqdm(pair_stats.keys()):
             out[attr1] = {}
+            tempout[attr1] = {}
             for attr2 in pair_stats[attr1].keys():
                 out[attr1][attr2] = {}
+                tempout[attr1][attr2] = {}
                 for val1 in pair_stats[attr1][attr2].keys():
                     denom = self.single_stats[attr1][val1]
 
                     # We sort our candidate values by largest co-occuring probability.
                     sorted_cands = sorted([(val2, count / denom) for val2, count in pair_stats[attr1][attr2][val1].items()], key=lambda t: t[1], reverse=True)
                     assert(abs(sum(proba for _, proba in sorted_cands) - 1.0) < 1e-6)
+
+                    tempout[attr1][attr2][val1] = sorted_cands
+
                     # We take the top :param`domain_top_percentile`% of domain values.
                     cum_proba = 0.0
                     top_cdf_cands = []
@@ -131,7 +137,9 @@ class DomainEngine:
                         top_cdf_cands.append(val)
                         cum_proba += proba
                     out[attr1][attr2][val1] = top_cdf_cands
-        return out
+
+        # return out
+        return out, tempout
 
     def get_active_attributes(self):
         """
@@ -201,16 +209,28 @@ class DomainEngine:
         vid = 0
         records = self.ds.get_raw_data().to_records()
         self.all_attrs = list(records.dtype.names)
+
+
+        dom2_df = []
+
         for row in tqdm(list(records)):
             tid = row['_tid_']
             app = []
             for attr in self.active_attributes:
-                init_value, dom = self.get_domain_cell(attr, row)
+                init_value, dom, dom2 = self.get_domain_cell(attr, row)
                 init_value_idx = dom.index(init_value)
                 # We will use an estimator model for additional weak labelling
                 # below, which requires an initial pruned domain first.
                 weak_label = init_value
                 weak_label_idx = init_value_idx
+                for val, proba, co_attr in dom2:
+                    dom2_df.append({"_tid_": tid,
+                                "attribute": attr,
+                                "_vid_": vid,
+                                "val": val,
+                                "cooccur_proba": proba,
+                                "co_attr": co_attr})
+
                 if len(dom) > 1:
                     cid = self.ds.get_cell_id(tid, attr)
                     app.append({"_tid_": tid,
@@ -244,6 +264,9 @@ class DomainEngine:
                                     "fixed": CellStatus.SINGLE_VALUE.value})
                         vid += 1
             cells.extend(app)
+        dom2_df = pd.DataFrame(dom2_df)
+        self.ds.generate_aux_table(AuxTables.dom2, dom2_df, store=True, index_attrs=['_vid_'])
+
         domain_df = pd.DataFrame(data=cells).sort_values('_vid_')
         logging.debug('distribution of domain size before estimator:\n%s', domain_df['domain_size'].describe())
         logging.debug('DONE generating initial set of domain values in %.2f', time.clock() - tic)
@@ -341,6 +364,7 @@ class DomainEngine:
         # Domain maps candidate domain values (str) to their maximum co-occurrence
         # probability across all attributes.
         domain = set([])
+        domain2 = []
         correlated_attributes = self.get_corr_attributes(attr, self.cor_strength)
         # Iterate through all attributes correlated at least self.cor_strength ('cond_attr')
         # and take the top K co-occurrence values for 'attr' with the current
@@ -353,6 +377,9 @@ class DomainEngine:
                 if not self.pruned_pair_stats[cond_attr][attr]:
                     break
                 s = self.pruned_pair_stats[cond_attr][attr]
+
+                domain2 += [(cond_attr,) + t for t in  self._temp_stats[cond_attr][attr][cond_val]]
+
                 try:
                     candidates = s[cond_val]
                     domain.update(candidates)
@@ -370,7 +397,7 @@ class DomainEngine:
         init_value = row[attr]
         domain.update({init_value})
 
-        return init_value, list(domain)
+        return init_value, list(domain), domain2
 
     def get_random_domain(self, attr, cur_value):
         """
