@@ -19,7 +19,6 @@ class DomainEngine:
         """
         self.env = env
         self.ds = dataset
-        self.domain_thresh_1 = env["domain_thresh_1"]
         self.weak_label_thresh = env["weak_label_thresh"]
         self.domain_thresh_2 = env["domain_thresh_2"]
         self.max_domain = env["max_domain"]
@@ -32,7 +31,7 @@ class DomainEngine:
         self.cor_strength = env["cor_strength"]
         self.max_sample = max_sample
         self.single_stats = {}
-        self.pair_stats = {}
+        self.pruned_pair_stats = {}
         self.all_attrs = {}
 
     def setup(self):
@@ -95,7 +94,7 @@ class DomainEngine:
         self.single_stats = single_stats
         logging.debug("preparing pruned co-occurring statistics...")
         tic = time.clock()
-        self.pair_stats = self._pruned_pair_stats(pair_stats)
+        self.pruned_pair_stats = self._pruned_pair_stats(pair_stats)
         logging.debug("DONE with pruned co-occurring statistics in %.2f secs", time.clock() - tic)
         self.setup_complete = True
 
@@ -108,9 +107,8 @@ class DomainEngine:
               <count>: frequency (# of entities) where attr1: <val1> AND attr2: <val2>
 
         to a flattened 4-level dictionary { attr1 -> { attr2 -> { val1 -> [pruned list of val2] } } }
-        i.e. maps to the co-occurring values for attr2 that exceed
-        the self.domain_thresh_1 co-occurrence probability for a given
-        attr1-val1 pair.
+        where the pruned list are all candidate values that are in the top
+        :param`domain_top_percentile`% of co-occurring probabilities.
         """
 
         out = {}
@@ -119,13 +117,20 @@ class DomainEngine:
             for attr2 in pair_stats[attr1].keys():
                 out[attr1][attr2] = {}
                 for val1 in pair_stats[attr1][attr2].keys():
-                    denominator = self.single_stats[attr1][val1]
-                    # tau becomes a threshhold on co-occurrence frequency
-                    # based on the co-occurrence probability threshold
-                    # domain_thresh_1.
-                    tau = float(self.domain_thresh_1*denominator)
-                    top_cands = [val2 for (val2, count) in pair_stats[attr1][attr2][val1].items() if count > tau]
-                    out[attr1][attr2][val1] = top_cands
+                    denom = self.single_stats[attr1][val1]
+
+                    # We sort our candidate values by largest co-occuring probability.
+                    sorted_cands = sorted([(val2, count / denom) for val2, count in pair_stats[attr1][attr2][val1].items()], key=lambda t: t[1], reverse=True)
+                    assert(abs(sum(proba for _, proba in sorted_cands) - 1.0) < 1e-6)
+                    # We take the top :param`domain_top_percentile`% of domain values.
+                    cum_proba = 0.0
+                    top_cdf_cands = []
+                    for val, proba in sorted_cands:
+                        if cum_proba > self.env['domain_top_percentile']:
+                            break
+                        top_cdf_cands.append(val)
+                        cum_proba += proba
+                    out[attr1][attr2][val1] = top_cdf_cands
         return out
 
     def get_active_attributes(self):
@@ -240,6 +245,7 @@ class DomainEngine:
                         vid += 1
             cells.extend(app)
         domain_df = pd.DataFrame(data=cells).sort_values('_vid_')
+        logging.debug('distribution of domain size before estimator:\n%s', domain_df['domain_size'].describe())
         logging.debug('DONE generating initial set of domain values in %.2f', time.clock() - tic)
 
         # Skip estimator model since we do not require any weak labelling or domain
@@ -332,6 +338,8 @@ class DomainEngine:
         :return: (initial value of entity-attribute, domain values for entity-attribute).
         """
 
+        # Domain maps candidate domain values (str) to their maximum co-occurrence
+        # probability across all attributes.
         domain = set([])
         correlated_attributes = self.get_corr_attributes(attr, self.cor_strength)
         # Iterate through all attributes correlated at least self.cor_strength ('cond_attr')
@@ -342,9 +350,9 @@ class DomainEngine:
                 continue
             cond_val = row[cond_attr]
             if not pd.isnull(cond_val):
-                if not self.pair_stats[cond_attr][attr]:
+                if not self.pruned_pair_stats[cond_attr][attr]:
                     break
-                s = self.pair_stats[cond_attr][attr]
+                s = self.pruned_pair_stats[cond_attr][attr]
                 try:
                     candidates = s[cond_val]
                     domain.update(candidates)
@@ -357,13 +365,11 @@ class DomainEngine:
 
         # Remove _nan_ if added due to correlated attributes.
         domain.discard('_nan_')
-        # Add initial value in domain
-        if pd.isnull(row[attr]):
-            domain.update({'_nan_'})
-            init_value = '_nan_'
-        else:
-            domain.update({row[attr]})
-            init_value = row[attr]
+
+        # Always include initial value in domain.
+        init_value = row[attr]
+        domain.update({init_value})
+
         return init_value, list(domain)
 
     def get_random_domain(self, attr, cur_value):

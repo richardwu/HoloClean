@@ -106,6 +106,8 @@ class Logistic(Estimator, torch.nn.Module):
             self.vid_to_idxs[rec['_vid_']] = (sample_idx, sample_idx+len(domain_vals))
             sample_idx += len(domain_vals)
 
+        logging.debug('Logistic: feature X tensor has dimensions %s', self._X.size())
+        logging.debug('Logistic: feature Y tensor has dimensions %s', self._Y.size())
         logging.debug('Logistic: DONE featurization in %.2fs', time.clock() - tic)
 
     def _gen_feat_tensor(self, init_row, attr, domain_vals):

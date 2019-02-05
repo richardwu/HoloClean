@@ -31,6 +31,7 @@ class FeaturizedDataset:
         tensor = torch.cat(tensors, 2)
         self.tensor = tensor
 
+        logging.debug('featurized training tensor has dimensions %s', self.tensor.size())
         logging.debug('DONE featurization.')
 
         if self.env['debug_mode']:
