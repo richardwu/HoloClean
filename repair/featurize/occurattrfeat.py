@@ -22,7 +22,8 @@ class OccurAttrFeaturizer(Featurizer):
         # Maps correlated attributes to their corresponding feature index.
         self.attr_pair_to_idx = {pair: idx for idx, pair in enumerate([(attr1, attr2)
             for attr1 in self.all_attrs
-            for attr2 in self._corr_attrs.get((attr1, self.env['cor_strength']), [])])}
+            for attr2 in self._corr_attrs.get((attr1, 0), [])])}
+            # for attr2 in self._corr_attrs.get((attr1, self.env['cor_strength']), [])])}
         self.num_feats = len(self.attr_pair_to_idx)
         self.setup_stats()
 

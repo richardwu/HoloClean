@@ -7,7 +7,7 @@ import random
 import math
 
 from dataset import AuxTables, CellStatus
-from .estimators import Logistic
+from .estimators import Logistic, NaiveBayes
 
 
 class DomainEngine:
@@ -265,14 +265,19 @@ class DomainEngine:
         # posterior model for a naive probability estimation.
         logging.debug('training posterior model for estimating domain value probabilities...')
         tic = time.clock()
-        estimator = Logistic(self.env, self.ds, domain_df, self.active_attributes)
-        estimator.train(num_epochs=self.env['estimator_epochs'], batch_size=self.env['estimator_batch_size'])
+        # estimator = Logistic(self.env, self.ds, domain_df, self.active_attributes)
+        # estimator.train(num_epochs=self.env['estimator_epochs'], batch_size=self.env['estimator_batch_size'])
+        estimator = NaiveBayes(self.ds, self.correlations, 0.3)
         logging.debug('DONE training posterior model in %.2fs', time.clock() - tic)
 
         # Predict probabilities for all pruned domain values.
         logging.debug('predicting domain value probabilities from posterior model...')
         tic = time.clock()
-        preds_by_cell = estimator.predict_pp_batch()
+        # preds_by_cell = estimator.predict_pp_batch()
+        raw_records_by_tid = {}
+        for row in self.ds.get_raw_data().to_records():
+            raw_records_by_tid[row['_tid_']] = row
+        preds_by_cell = estimator.predict_pp_batch(raw_records_by_tid, domain_df.to_records())
         logging.debug('DONE predictions in %.2f secs, re-constructing cell domain...', time.clock() - tic)
 
         logging.debug('re-assembling final cell domain table...')
