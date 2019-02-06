@@ -51,3 +51,6 @@ hc.evaluate(fpath='../testdata/hospital_clean.csv',
             tid_col='tid',
             attr_col='attribute',
             val_col='correct_val')
+
+if __name__ == '__main__':
+    pass

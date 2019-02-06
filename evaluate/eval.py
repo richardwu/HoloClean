@@ -145,10 +145,19 @@ class EvalEngine:
         # Memoize the number of repairs on correct cells and incorrect cells.
         # Since we do a GROUP BY we need to check which row of the result
         # corresponds to the correct/incorrect counts.
-        correct_idx, incorrect_idx = 0, 1
-        if res[1][0]:
+        self.total_repairs_grdt_correct, self.total_repairs_grdt_incorrect = 0, 0
+        self.total_repairs_grdt = 0
+        if not res:
+            return
+
+        if res[0][0]:
+            correct_idx, incorrect_idx = 0, 1
+        else:
             correct_idx, incorrect_idx = 1, 0
-        self.total_repairs_grdt_correct, self.total_repairs_grdt_incorrect = float(res[correct_idx][1]), float(res[incorrect_idx][1])
+        if correct_idx < len(res):
+            self.total_repairs_grdt_correct = float(res[correct_idx][1])
+        if incorrect_idx < len(res):
+            self.total_repairs_grdt_incorrect =  float(res[incorrect_idx][1])
         self.total_repairs_grdt = self.total_repairs_grdt_correct + self.total_repairs_grdt_incorrect
 
     def compute_total_errors(self):

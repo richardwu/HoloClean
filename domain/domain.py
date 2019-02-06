@@ -94,7 +94,7 @@ class DomainEngine:
         self.single_stats = single_stats
         logging.debug("preparing pruned co-occurring statistics...")
         tic = time.clock()
-        self.pruned_pair_stats, self._temp_stats = self._pruned_pair_stats(pair_stats)
+        self.pruned_pair_stats = self._pruned_pair_stats(pair_stats)
         logging.debug("DONE with pruned co-occurring statistics in %.2f secs", time.clock() - tic)
         self.setup_complete = True
 
@@ -112,13 +112,10 @@ class DomainEngine:
         """
 
         out = {}
-        tempout = {}
         for attr1 in tqdm(pair_stats.keys()):
             out[attr1] = {}
-            tempout[attr1] = {}
             for attr2 in pair_stats[attr1].keys():
                 out[attr1][attr2] = {}
-                tempout[attr1][attr2] = {}
                 for val1 in pair_stats[attr1][attr2].keys():
                     denom = self.single_stats[attr1][val1]
 
@@ -126,20 +123,19 @@ class DomainEngine:
                     sorted_cands = sorted([(val2, count / denom) for val2, count in pair_stats[attr1][attr2][val1].items()], key=lambda t: t[1], reverse=True)
                     assert(abs(sum(proba for _, proba in sorted_cands) - 1.0) < 1e-6)
 
-                    tempout[attr1][attr2][val1] = sorted_cands
-
                     # We take the top :param`domain_top_percentile`% of domain values.
-                    cum_proba = 0.0
-                    top_cdf_cands = []
-                    for val, proba in sorted_cands:
-                        if cum_proba > self.env['domain_top_percentile']:
-                            break
-                        top_cdf_cands.append(val)
-                        cum_proba += proba
-                    out[attr1][attr2][val1] = top_cdf_cands
+                    # cum_proba = 0.0
+                    # top_cdf_cands = []
+                    # for val, proba in sorted_cands:
+                    #     if cum_proba > self.env['domain_top_percentile']:
+                    #         break
+                    #     top_cdf_cands.append(val)
+                    #     cum_proba += proba
+                    # out[attr1][attr2][val1] = top_cdf_cands
+                    out[attr1][attr2][val1] = list(pair_stats[attr1][attr2][val1].keys())
 
         # return out
-        return out, tempout
+        return out
 
     def get_active_attributes(self):
         """
@@ -151,7 +147,7 @@ class DomainEngine:
         result = self.ds.engine.execute_query(query)
         if not result:
             raise Exception("No attribute contains erroneous cells.")
-        return set(itertools.chain(*result))
+        return sorted(itertools.chain(*result))
 
     def get_corr_attributes(self, attr, thres):
         """
@@ -310,7 +306,7 @@ class DomainEngine:
             # Assign weak label if domain value exceeds our weak label threshold
             weak_label, weak_label_prob = max(preds, key=lambda pred: pred[1])
 
-            if weak_label_prob >= self.weak_label_thresh:
+            if weak_label != row['init_value'] and weak_label_prob >= self.weak_label_thresh:
                 num_weak_labels+=1
 
                 weak_label_idx = domain_values.index(weak_label)
