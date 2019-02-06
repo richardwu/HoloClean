@@ -19,6 +19,11 @@ class OccurAttrFeaturizer(Featurizer):
         self.total = None
         self.single_stats = None
         self.pair_stats = None
+        # Maps correlated attributes to their corresponding feature index.
+        self.attr_pair_to_idx = {pair: idx for idx, pair in enumerate([(attr1, attr2)
+            for attr1 in self.all_attrs
+            for attr2 in self._corr_attrs.get((attr1, self.env['cor_strength']), [])])}
+        self.num_feats = len(self.attr_pair_to_idx)
         self.setup_stats()
 
     def setup_stats(self):
@@ -45,14 +50,19 @@ class OccurAttrFeaturizer(Featurizer):
         return combined
 
     def gen_feat_tensor(self, row, tuple):
-        tensor = torch.zeros(1, self.classes, self.attrs_number*self.attrs_number)
+        tensor = torch.zeros(1, self.classes, self.num_feats)
         rv_attr = row['attribute']
         domain = row['domain'].split('|||')
         rv_domain_idx = {val: idx for idx, val in enumerate(domain)}
-        rv_attr_idx = self.ds.attr_to_idx[rv_attr]
         for attr in self.all_attrs:
+            # Skip since this attribute pair is not correlated enough.
+            if (rv_attr, attr) not in self.attr_pair_to_idx:
+                continue
+            # Index in this tensor that corresponds to the rv_attr X attr
+            # co-occurrence feature.
+            feat_idx = self.attr_pair_to_idx[(rv_attr, attr)]
+
             if attr != rv_attr and (not pd.isnull(tuple[attr])):
-                attr_idx = self.ds.attr_to_idx[attr]
                 val = tuple[attr]
                 count1 = float(self.single_stats[attr][val])
                 # Get topK values
@@ -70,9 +80,8 @@ class OccurAttrFeaturizer(Featurizer):
                         count2 = float(all_vals.get(rv_val,0.0))
                         prob = count2/count1
                         if rv_val in rv_domain_idx:
-                            index = rv_attr_idx * self.attrs_number + attr_idx
-                            tensor[0][rv_domain_idx[rv_val]][index] = prob
+                            tensor[0][rv_domain_idx[rv_val]][feat_idx] = prob
         return tensor
 
     def feature_names(self):
-        return ["{} X {}".format(attr1, attr2) for attr1 in self.all_attrs for attr2 in self.all_attrs]
+        return ["{} X {}".format(attr1, attr2) for (attr1, attr2), _ in sorted(self.attr_pair_to_idx.items(), key=lambda t: t[1])]

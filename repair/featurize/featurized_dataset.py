@@ -13,13 +13,13 @@ FeatInfo = namedtuple('FeatInfo', ['name', 'size', 'learnable', 'init_weight', '
 
 
 class FeaturizedDataset:
-    def __init__(self, dataset, env, featurizers):
+    def __init__(self, dataset, env, featurizers, corr_attrs):
         self.ds = dataset
         self.env = env
         self.total_vars, self.classes = self.ds.get_domain_info()
         self.processes = self.env['threads']
         for f in featurizers:
-            f.setup_featurizer(self.ds, self.processes, self.env['batch_size'])
+            f.setup_featurizer(self.env, self.ds, self.processes, self.env['batch_size'], corr_attrs)
         logging.debug('featurizing training data...')
         tensors = [f.create_tensor() for f in featurizers]
         self.featurizer_info = [FeatInfo(featurizer.name,

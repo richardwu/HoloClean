@@ -11,12 +11,14 @@ class Featurizer:
         self.learnable = learnable
         self.init_weight = init_weight
 
-    def setup_featurizer(self, dataset, processes=20, batch_size=32):
+    def setup_featurizer(self, env, dataset, processes=20, batch_size=32, corr_attrs=None):
+        self.env = env
         self.ds = dataset
         self.total_vars, self.classes = self.ds.get_domain_info()
         # only create a pool if processes > 1
         self._pool = Pool(processes) if processes > 1 else None
         self._batch_size = batch_size
+        self._corr_attrs = corr_attrs
         self.setup_done = True
         self.specific_setup()
 

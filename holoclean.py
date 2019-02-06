@@ -300,7 +300,7 @@ class Session:
         logging.debug('Time to setup the domain: %.2f secs', domain_time)
 
     def repair_errors(self, featurizers):
-        status, feat_time = self.repair_engine.setup_featurized_ds(featurizers)
+        status, feat_time = self.repair_engine.setup_featurized_ds(featurizers, self.domain_engine._corr_attrs)
         logging.info(status)
         logging.debug('Time to featurize data: %.2f secs', feat_time)
         status, setup_time = self.repair_engine.setup_repair_model()

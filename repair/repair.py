@@ -13,9 +13,9 @@ class RepairEngine:
         self.ds = dataset
         self.env = env
 
-    def setup_featurized_ds(self, featurizers):
+    def setup_featurized_ds(self, featurizers, corr_attrs):
         tic = time.clock()
-        self.feat_dataset = FeaturizedDataset(self.ds, self.env, featurizers)
+        self.feat_dataset = FeaturizedDataset(self.ds, self.env, featurizers, corr_attrs)
         toc = time.clock()
         status = "DONE setting up featurized dataset."
         feat_time = toc - tic
