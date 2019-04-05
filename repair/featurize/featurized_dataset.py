@@ -140,7 +140,10 @@ class FeaturizedDataset:
         Retrieves the samples to be inferred i.e. DK cells.
         """
         # only infer on those that are DK cells
-        infer_idx = (self.is_clean == 0).nonzero()[:, 0]
+        # infer_idx = (self.is_clean == 0).nonzero()[:, 0]
+
+        # Infer on everything
+        infer_idx = torch.LongTensor(np.arange(0,self.is_clean.shape[0]))
         X_infer = self.tensor.index_select(0, infer_idx)
         mask_infer = self.var_class_mask.index_select(0, infer_idx)
         return X_infer, mask_infer, infer_idx
